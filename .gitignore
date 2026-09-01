@@ -6,3 +6,7 @@ venv/
 output/
 *.egg-info/
 .DS_Store
+
+# Google OAuth client secret and cached user token -- never commit these.
+credentials.json
+token.json

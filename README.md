@@ -12,6 +12,7 @@ auto-append into an existing outreach-tracker spreadsheet.
 - [x] Flag businesses with no website as high-priority leads
 - [x] Export clean CSV
 - [x] Optional: append new leads into an outreach-tracker `.xlsx`
+- [x] Optional: create a personalized Gmail draft for each new lead
 
 ## Setup
 
@@ -51,6 +52,9 @@ Options:
 - `--csv-output` (optional) - custom path for the clean leads CSV
 - `--tracker-path` (optional) - path to an outreach-tracker `.xlsx`; overrides `OUTREACH_TRACKER_PATH`
 - `--skip-tracker` (optional) - skip the tracker update for this run
+- `--gmail-credentials-path` (optional) - path to a Google OAuth `credentials.json`; overrides `GMAIL_CREDENTIALS_PATH`
+- `--gmail-token-path` (optional) - where to cache the Gmail OAuth token; overrides `GMAIL_TOKEN_PATH`
+- `--skip-drafts` (optional) - skip Gmail draft creation for this run
 
 This runs the [Google Maps Scraper](https://apify.com/compass/crawler-google-places)
 actor on Apify with the search query `"<industry> in <location>"` and writes,
@@ -85,6 +89,43 @@ Column mapping:
 Use `--skip-tracker` to skip this step for a single run even if a tracker
 path is configured.
 
+## Gmail drafts (optional)
+
+If `GMAIL_CREDENTIALS_PATH` is set in `.env` (or `--gmail-credentials-path`
+is passed) to a Google OAuth "installed app" `credentials.json`, each run
+creates a Gmail draft for every *newly added* tracker row (duplicates and
+leads that failed to append are skipped). The draft has no recipient set --
+Google Maps doesn't return emails, so fill in "To" by hand before sending.
+Once a draft is created, that lead's tracker Status is updated to
+`"Draft Ready"` so you know which ones are waiting on you to review and send.
+
+Setup:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
+   enable the Gmail API and create an OAuth client ID of type "Desktop app".
+   Download it and point `GMAIL_CREDENTIALS_PATH` at the file.
+2. First run opens a browser to sign in and authorize; the token is then
+   cached (default `token.json` next to `main.py`, or `GMAIL_TOKEN_PATH`) so
+   later runs don't prompt again.
+
+**Never commit `credentials.json` or the cached token file** -- both are
+already gitignored. The Gmail scope used is `gmail.compose`, which can only
+create/edit drafts, not read or send existing mail.
+
+Email template (business name substituted in both places):
+
+> Subject: A free AI video ad for [Business Name]
+>
+> Hey there — I'm Ken AI Solutions here in Metro Atlanta. I make short AI
+> video ads for small businesses, and I actually already built you a free
+> one using [Business Name]'s website — no charge, no catch.
+>
+> Want me to send it over? Takes 30 seconds to watch. If you like it,
+> great — if not, no hard feelings either way.
+
+Use `--skip-drafts` to skip this step for a single run even if Gmail
+credentials are configured.
+
 ## Project structure
 
 ```
@@ -93,8 +134,11 @@ path is configured.
 ├── src/
 │   ├── apify_scraper.py       # Apify API wrapper (search + fetch raw results)
 │   ├── leads.py                # Normalize raw results, flag no-website leads, export CSV
-│   └── outreach_tracker.py    # Append new leads into an outreach-tracker .xlsx, deduped
+│   ├── outreach_tracker.py    # Append new leads into an outreach-tracker .xlsx, deduped
+│   └── gmail_drafts.py        # Create a Gmail draft per new lead via OAuth
 ├── requirements.txt
 ├── .env.example
+├── credentials.json           # Google OAuth client secret (gitignored, not included)
+├── token.json                 # Cached Gmail OAuth token (gitignored, created on first run)
 └── output/                    # raw JSON + CSV results land here (gitignored)
 ```

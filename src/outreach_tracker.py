@@ -102,13 +102,16 @@ def append_leads_to_tracker(
     industry: str,
     location: str,
     tracker_path: str | Path,
-) -> dict[str, int]:
+) -> dict[str, Any]:
     """Append new leads to the Outreach Tracker sheet, skipping duplicates.
 
     A lead is considered a duplicate if its business name OR phone number
     (digits only) already appears anywhere in the sheet.
 
-    Returns a summary dict: {"appended": N, "skipped_duplicates": N}.
+    Returns {"appended": N, "skipped_duplicates": N, "appended_rows": [...]},
+    where appended_rows is [{"row": <sheet row number>, "lead": <lead dict>}]
+    for each newly written row, in write order -- useful for a follow-up
+    step (e.g. creating a draft email) that needs to update those exact rows.
     """
     tracker_path = Path(tracker_path)
     if not tracker_path.exists():
@@ -126,6 +129,7 @@ def append_leads_to_tracker(
 
     appended = 0
     skipped = 0
+    appended_rows: list[dict[str, Any]] = []
     template_row = max(3, ws.max_row) if ws.max_row >= 3 else 2
 
     for lead in leads:
@@ -171,6 +175,24 @@ def append_leads_to_tracker(
         if norm_phone:
             existing_phones.add(norm_phone)
         appended += 1
+        appended_rows.append({"row": row, "lead": lead})
 
     wb.save(tracker_path)
-    return {"appended": appended, "skipped_duplicates": skipped}
+    return {"appended": appended, "skipped_duplicates": skipped, "appended_rows": appended_rows}
+
+
+def mark_status(tracker_path: str | Path, row_statuses: dict[int, str]) -> None:
+    """Set the Status cell for specific rows (e.g. "Draft Ready" after a
+    Gmail draft is successfully created for that row)."""
+    if not row_statuses:
+        return
+
+    tracker_path = Path(tracker_path)
+    wb = openpyxl.load_workbook(tracker_path)
+    ws = wb[SHEET_NAME]
+
+    status_col = COLUMNS.index("Status") + 1
+    for row, status in row_statuses.items():
+        ws.cell(row=row, column=status_col).value = status
+
+    wb.save(tracker_path)

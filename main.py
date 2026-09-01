@@ -24,10 +24,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from src.apify_scraper import ApifyConfigError, fetch_raw_leads
+from src.gmail_drafts import create_draft, get_gmail_service
 from src.leads import export_to_csv, normalize_leads
-from src.outreach_tracker import append_leads_to_tracker
+from src.outreach_tracker import append_leads_to_tracker, mark_status
 
 OUTPUT_DIR = Path(__file__).parent / "output"
+DEFAULT_GMAIL_TOKEN_PATH = Path(__file__).parent / "token.json"
 
 
 def parse_args() -> argparse.Namespace:
@@ -70,6 +72,26 @@ def parse_args() -> argparse.Namespace:
         "--skip-tracker",
         action="store_true",
         help="Skip appending leads to the outreach tracker even if a path is configured.",
+    )
+    parser.add_argument(
+        "--gmail-credentials-path",
+        help=(
+            "Path to a Google OAuth 'installed app' credentials.json to create Gmail "
+            "drafts for new leads. Falls back to the GMAIL_CREDENTIALS_PATH env var / "
+            ".env entry. If neither is set, the draft step is skipped."
+        ),
+    )
+    parser.add_argument(
+        "--gmail-token-path",
+        help=(
+            "Path to cache the Gmail OAuth token after the first authorization "
+            "(default: token.json next to main.py). Falls back to GMAIL_TOKEN_PATH."
+        ),
+    )
+    parser.add_argument(
+        "--skip-drafts",
+        action="store_true",
+        help="Skip creating Gmail drafts for new leads even if credentials are configured.",
     )
     return parser.parse_args()
 
@@ -117,6 +139,7 @@ def main() -> int:
     print(f"Clean leads CSV written to {csv_path}")
 
     tracker_path = args.tracker_path or os.environ.get("OUTREACH_TRACKER_PATH")
+    appended_rows: list[dict] = []
     if args.skip_tracker:
         print("Skipping outreach tracker update (--skip-tracker).")
     elif not tracker_path:
@@ -129,12 +152,45 @@ def main() -> int:
             summary = append_leads_to_tracker(
                 leads, industry=args.industry, location=args.location, tracker_path=tracker_path
             )
+            appended_rows = summary["appended_rows"]
             print(
                 f"Outreach tracker updated: {summary['appended']} new lead(s) added, "
                 f"{summary['skipped_duplicates']} duplicate(s) skipped."
             )
         except Exception as e:
             print(f"Warning: failed to update outreach tracker: {e}", file=sys.stderr)
+
+    gmail_credentials_path = args.gmail_credentials_path or os.environ.get("GMAIL_CREDENTIALS_PATH")
+    gmail_token_path = args.gmail_token_path or os.environ.get("GMAIL_TOKEN_PATH") or DEFAULT_GMAIL_TOKEN_PATH
+    if args.skip_drafts:
+        print("Skipping Gmail draft creation (--skip-drafts).")
+    elif not appended_rows:
+        print("No new leads to draft emails for.")
+    elif not gmail_credentials_path:
+        print(
+            "No Gmail credentials configured (set --gmail-credentials-path or "
+            "GMAIL_CREDENTIALS_PATH in .env) -- skipping draft creation."
+        )
+    else:
+        try:
+            service = get_gmail_service(gmail_credentials_path, gmail_token_path)
+            drafted_rows: dict[int, str] = {}
+            for entry in appended_rows:
+                name = entry["lead"]["name"]
+                try:
+                    create_draft(service, name)
+                    drafted_rows[entry["row"]] = "Draft Ready"
+                except Exception as e:
+                    print(f"Warning: failed to create draft for {name!r}: {e}", file=sys.stderr)
+
+            if drafted_rows:
+                mark_status(tracker_path, drafted_rows)
+            print(
+                f"Created {len(drafted_rows)} of {len(appended_rows)} Gmail draft(s); "
+                f"marked as Draft Ready in the tracker."
+            )
+        except Exception as e:
+            print(f"Warning: failed to create Gmail drafts: {e}", file=sys.stderr)
 
     return 0
 
