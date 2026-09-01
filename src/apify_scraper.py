@@ -79,7 +79,9 @@ def fetch_raw_leads(
 
     run = client.actor(actor_id).call(run_input=run_input)
 
-    dataset_id = run.get("defaultDatasetId")
+    dataset_id = getattr(run, "default_dataset_id", None) or (
+        run.get("defaultDatasetId") if isinstance(run, dict) else None
+    )
     if not dataset_id:
         raise RuntimeError(
             f"Actor run finished but returned no dataset id. Run info: {run}"
