@@ -75,6 +75,7 @@ Column mapping:
 | Industry | the `--industry` you searched |
 | Contact Name | left blank |
 | Phone / Email | lead phone |
+| Website | lead website URL, or `"NO WEBSITE"` if none -- the key lead-priority signal |
 | Source | `"Google Maps"` |
 | Date Contacted | left blank |
 | Free Sample Sent?, Sample Sent Date, Response, Follow-Up Date | left blank |

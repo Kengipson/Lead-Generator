@@ -6,7 +6,7 @@ businesses that are already in the sheet.
 This does not create or redesign the workbook -- it expects one that already
 has an "Outreach Tracker" sheet with this header row:
 
-    Business Name | Industry | Contact Name | Phone / Email |
+    Business Name | Industry | Contact Name | Phone / Email | Website |
     Source (Chamber, Maps, Referral, etc.) | Date Contacted |
     Free Sample Sent? (Y/N) | Sample Sent Date | Response (Y/N/Pending) |
     Follow-Up Date | Status | Notes
@@ -29,6 +29,7 @@ COLUMNS = [
     "Industry",
     "Contact Name",
     "Phone / Email",
+    "Website",
     "Source (Chamber, Maps, Referral, etc.)",
     "Date Contacted",
     "Free Sample Sent? (Y/N)",
@@ -40,6 +41,8 @@ COLUMNS = [
 ]
 COL_NAME = 1
 COL_PHONE = 4
+
+NO_WEBSITE_LABEL = "NO WEBSITE"
 
 
 def _normalize_name(name: str) -> str:
@@ -143,11 +146,14 @@ def append_leads_to_tracker(
             # Ran out of pre-formatted template rows -- extend, matching style.
             _apply_template_style(ws, row, template_row)
 
+        website = (lead.get("website") or "").strip()
+
         values = {
             "Business Name": name,
             "Industry": industry,
             "Contact Name": None,
             "Phone / Email": phone,
+            "Website": website if website else NO_WEBSITE_LABEL,
             "Source (Chamber, Maps, Referral, etc.)": "Google Maps",
             "Date Contacted": None,
             "Free Sample Sent? (Y/N)": None,
