@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +25,7 @@ from dotenv import load_dotenv
 
 from src.apify_scraper import ApifyConfigError, fetch_raw_leads
 from src.leads import export_to_csv, normalize_leads
+from src.outreach_tracker import append_leads_to_tracker
 
 OUTPUT_DIR = Path(__file__).parent / "output"
 
@@ -55,6 +57,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--csv-output",
         help="Path to write the clean leads CSV (default: output/leads_<slug>_<timestamp>.csv)",
+    )
+    parser.add_argument(
+        "--tracker-path",
+        help=(
+            "Path to an outreach-tracker .xlsx with an 'Outreach Tracker' sheet "
+            "to append new leads into. Falls back to the OUTREACH_TRACKER_PATH "
+            "env var / .env entry. If neither is set, the tracker step is skipped."
+        ),
+    )
+    parser.add_argument(
+        "--skip-tracker",
+        action="store_true",
+        help="Skip appending leads to the outreach tracker even if a path is configured.",
     )
     return parser.parse_args()
 
@@ -100,6 +115,26 @@ def main() -> int:
     csv_path = Path(args.csv_output) if args.csv_output else OUTPUT_DIR / f"leads_{slug}_{timestamp}.csv"
     export_to_csv(leads, csv_path)
     print(f"Clean leads CSV written to {csv_path}")
+
+    tracker_path = args.tracker_path or os.environ.get("OUTREACH_TRACKER_PATH")
+    if args.skip_tracker:
+        print("Skipping outreach tracker update (--skip-tracker).")
+    elif not tracker_path:
+        print(
+            "No outreach tracker configured (set --tracker-path or "
+            "OUTREACH_TRACKER_PATH in .env) -- skipping tracker update."
+        )
+    else:
+        try:
+            summary = append_leads_to_tracker(
+                leads, industry=args.industry, location=args.location, tracker_path=tracker_path
+            )
+            print(
+                f"Outreach tracker updated: {summary['appended']} new lead(s) added, "
+                f"{summary['skipped_duplicates']} duplicate(s) skipped."
+            )
+        except Exception as e:
+            print(f"Warning: failed to update outreach tracker: {e}", file=sys.stderr)
 
     return 0
 
